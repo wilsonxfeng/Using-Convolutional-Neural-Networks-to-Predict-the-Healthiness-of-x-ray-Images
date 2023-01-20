@@ -1,0 +1,223 @@
+import numpy
+import tensorflow as tf
+import matplotlib.pyplot as plt
+import pandas as pd
+from keras.layers import GlobalAveragePooling2D, Dense, Dropout, Flatten
+from keras.models import Sequential
+from keras.optimizers import SGD
+
+path = "C:/Users/wilso/OneDrive/Desktop/images/"
+data = pd.read_csv("archive (1)/Data_Entry_2017.csv")
+
+train_dataset = tf.keras.utils.image_dataset_from_directory(
+    path,
+    labels="inferred",
+    label_mode="binary",
+    seed=21,
+    validation_split=0.2,
+    subset="training",
+    follow_links=False,
+    crop_to_aspect_ratio=True,
+    color_mode="rgb",
+)
+val_dataset = tf.keras.utils.image_dataset_from_directory(
+    path,
+    labels="inferred",
+    label_mode="binary",
+    seed=21,
+    validation_split=0.2,
+    subset="validation",
+    follow_links=False,
+    crop_to_aspect_ratio=True,
+    color_mode="rgb",
+)
+mobilenet_model = tf.keras.applications.MobileNet(
+    input_shape=(256, 256, 3),
+    alpha=1.0,
+    depth_multiplier=1,
+    dropout=0.001,
+    include_top=False,
+    weights=None,
+    input_tensor=None,
+    pooling=None,
+)
+# class_names = train_dataset.class_names
+# print(class_names)
+# plt.figure(figsize=(10, 10))
+# for images, labels in train_dataset.take(1):
+#     print(numpy.array(labels))
+#     for i in range(9):
+#         ax = plt.subplot(3, 3, i + 1)
+#         plt.imshow(images[i].numpy().astype("uint8"))
+#         x = int(numpy.array(labels)[i])
+#         plt.title(x)
+#     plt.show()
+opt = SGD(lr=0.001)
+
+model = Sequential()
+model.add(mobilenet_model)
+model.add(GlobalAveragePooling2D())
+model.add(Dropout(0.5))
+model.add(Dense(512))
+model.add(Dropout(0.5))
+model.add(Dense(2, activation='sigmoid'))
+model.add(Flatten())
+model.compile(optimizer=opt, loss='binary_crossentropy',
+              metrics=['binary_accuracy', 'mae'])
+model.summary()
+
+epochs = 50
+history = model.fit(
+    train_dataset,
+    validation_data=val_dataset,
+    epochs=epochs
+)
+
+model.save("saved_models/model13")
+
+plt.plot(history.history['binary_accuracy'], label='train accuracy')
+plt.plot(history.history['val_binary_accuracy'], label='validation accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.ylim([0.5, 1])
+plt.legend(loc='lower right')
+plt.show()
+
+
+
+
+
+-------------------------------------------------predict.py file-----------------------------------------------------------------------
+
+import matplotlib.pyplot as plt
+import numpy as np
+from keras.models import load_model
+import tensorflow as tf
+import pandas as pd
+import random
+import time
+
+# Load the Keras model
+
+model = load_model('saved_models/model12')
+
+data = pd.read_csv("archive (1)/Data_Entry_2017.csv")
+
+
+def prepare_image(img_path):
+    img = tf.keras.preprocessing.image.load_img(img_path, target_size=(256, 256))
+    img_array = tf.keras.preprocessing.image.img_to_array(img)
+    img_array_expanded_dims = np.expand_dims(img_array, 0)
+    return tf.keras.applications.mobilenet.preprocess_input(img_array_expanded_dims)
+
+
+def binary_to_data(binary):
+    if binary == 1:
+        return "No Finding"
+    else:
+        return "Finding Detected"
+
+
+def predict_image(img_path):
+    img = tf.keras.preprocessing.image.load_img(img_path, target_size=(256, 256))
+    img_array = tf.keras.preprocessing.image.img_to_array(img)
+    img_array_expanded_dims = np.expand_dims(img_array, 0)
+    predictions = model.predict(tf.keras.applications.mobilenet.preprocess_input(img_array_expanded_dims))
+    # Save the predictions to a binary file
+    predicted_binary = np.argmax(predictions)
+    print(predicted_binary)
+    # Plot the predictions and the input data
+    plt.imshow(img)
+    plt.xlabel("Predicted Label: " + binary_to_data(predicted_binary))
+    plt.ylabel("Image: " + img_path[51:])
+    plt.xticks([], [])
+    plt.yticks([], [])
+    plt.legend()
+    plt.show()
+
+
+
+
+----------------------------------------------------------------program.py file--------------------------------------------------------
+
+
+import tkinter as tk
+from tkinter import filedialog
+from predict import predict_image
+
+
+def predict():
+    # This function will be called when the file input button is clicked
+    filepath = filedialog.askopenfilename()
+    predict_image(filepath)
+
+
+root = tk.Tk()
+root.geometry("612x408")
+root.configure(bg='#2c3e50')
+root.title("The AI Crystal Ball")
+
+xray_image = tk.PhotoImage(file='xray.png')
+xray_label = tk.Label(root, image=xray_image, bg='#2c3e50')
+xray_label.place(relwidth=1, relheight=1)
+file_input_button = tk.Button(root, text="Select a file", command=predict, bg='#34495e', fg='white')
+file_input_button.pack(side="top", fill="both")
+
+for i in range(213):
+    print("")
+root.mainloop()
+
+
+
+---------------------------------------script.py file (for testing the 200 images)-----------------------------------------------------
+
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from predict import predict_img
+import os
+
+false_positives = 0
+true_positives = 0
+true_negatives = 0
+false_negatives = 0
+normal = "C:/Users/wilso/Documents/Resources/TEST/NORMAL"
+pneumonia = "C:/Users/wilso/Documents/Resources/TEST/PNEUMONIA"
+
+for count, i in enumerate(os.listdir(normal)):
+    if predict_img(os.path.join(normal + "/" + i)) == 1:
+        true_negatives += 1
+        print(count)
+    else:
+        false_positives += 1
+        print(count)
+for count, i in enumerate(os.listdir(pneumonia)):
+    if predict_img(os.path.join(pneumonia + "/" + i)) == 1:
+        false_negatives += 1
+        print(count)
+    else:
+        true_positives += 1
+        print(count)
+
+print("Amount of False Positives: ", false_positives)
+print("Amount of True Positives: ", true_positives)
+print("Amount of False Negatives: ", false_negatives)
+print("Amount of True Negatives: ", true_negatives)
+
+# define the data for the graph
+w = false_positives
+x = true_positives
+y = false_negatives
+z = true_negatives
+
+# create the bar graph
+plt.bar(["false_positives", "true_positives", "false_negatives", "true_negatives"], [w, x, y, z])
+
+# add labels and title
+plt.xlabel("Performance")
+plt.ylabel("Amount")
+plt.title("The Performance of the Model")
+
+# show the graph
+plt.show()
